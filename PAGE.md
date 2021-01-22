@@ -1,1 +1,1 @@
-# Template Plugin
+# Philips Hue Plugin

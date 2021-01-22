@@ -1,22 +1,13 @@
 {
-  "name": "midi-mixer-plugin-template",
-  "prettyName": "Template Plugin",
+  "name": "plugin-hue",
+  "prettyName": "Philips Hue",
   "version": "0.1.0",
-  "description": "A template plugin for MIDI Mixer.",
+  "description": "Philips Hue plugin for MIDI Mixer.",
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "parcel src/index.ts --hmr-hostname localhost",
-    "build": "parcel build src/index.ts"
-  },
-  "settings": {
-    "address": "localhost:4444",
-    "password": "",
-    "multi": {
-      "brown": "Brown",
-      "blue": "Blue",
-      "purple": "Purple"
-    }
+    "dev": "parcel src/index.ts --hmr-hostname localhost --public-url . -t browser",
+    "build": "parcel build src/index.ts --public-url . -t browser"
   },
   "author": "Jack Williams",
   "license": "ISC",
@@ -24,6 +15,11 @@
     "parcel-bundler": "^1.12.4"
   },
   "dependencies": {
-    "midi-mixer-plugin": "^0.1.3"
+    "axios": "^0.21.1",
+    "midi-mixer-plugin": "^0.1.4"
+  },
+  "volta": {
+    "node": "14.15.4",
+    "npm": "6.14.11"
   }
 }
