@@ -20,6 +20,8 @@ export class HueSyncApi {
   };
   private syncingLights: Promise<void> | null = null;
   private syncingGroups: Promise<void> | null = null;
+  private needResync = false;
+  private changeSyncTimer: ReturnType<typeof setInterval> | null = null;
 
   private readonly settings = $MM.getSettings();
 
@@ -60,6 +62,26 @@ export class HueSyncApi {
     });
   }
 
+  public throttleSync(): void {
+    this.needResync = true;
+
+    if (!this.changeSyncTimer) {
+      this.changeSyncTimer = setInterval(async () => {
+        this.needResync = false;
+        await Promise.all([this.syncGroups(), this.syncLights()]);
+
+        /**
+         * Cancel the interval timer if needResync is still false. If another
+         * control has requested a resync then the interval can continue.
+         */
+        if (!this.needResync && this.changeSyncTimer) {
+          clearInterval(this.changeSyncTimer);
+          this.changeSyncTimer = null;
+        }
+      }, 200);
+    }
+  }
+
   public async syncLights(): Promise<void> {
     this.syncingLights ??= this._syncLights().then(() => {
       this.syncingLights = null;
@@ -78,6 +100,7 @@ export class HueSyncApi {
 
   private async _syncLights(): Promise<void> {
     console.log("Syncing lights");
+
     const api = await this.api;
     const lightsRes = await api.get<Hue.Lights>("/lights");
 
@@ -93,22 +116,30 @@ export class HueSyncApi {
         assignment.on("volumeChanged", (volume: number) => {
           assignment.volume = volume;
 
-          api.put(`/lights/${id}/state`, {
-            bri: Math.round(assignment.volume * 254),
-            // on: true,
-            transitiontime: 10,
-          });
+          api
+            .put(`/lights/${id}/state`, {
+              bri: Math.round(assignment.volume * 254),
+              // on: true,
+              transitiontime: 10,
+            })
+            .then(() => {
+              this.throttleSync();
+            });
         });
 
         assignment.on("mutePressed", () => {
           assignment.muted = !assignment.muted;
 
-          api.put(`/lights/${id}/state`, {
-            bri: Math.round(assignment.volume * 254),
-            on: assignment.muted,
-            transitiontime: 1,
-            // effect: "colorloop",
-          });
+          api
+            .put(`/lights/${id}/state`, {
+              bri: Math.round(assignment.volume * 254),
+              on: assignment.muted,
+              transitiontime: 1,
+              // effect: "colorloop",
+            })
+            .then(() => {
+              this.throttleSync();
+            });
         });
 
         this.assignments.lights[id] = assignment;
@@ -117,13 +148,13 @@ export class HueSyncApi {
         assignment.name = `${light.name} (light)`;
         assignment.muted = light.state.on;
         assignment.volume = light.state.bri / 254;
-        console.log("set volume for", id, "to:", light.state.bri / 254);
       }
     });
   }
 
   private async _syncGroups(): Promise<void> {
     console.log("Syncing groups");
+
     const api = await this.api;
 
     const [groupsRes, scenesRes] = await Promise.all([
@@ -137,27 +168,35 @@ export class HueSyncApi {
           name: `${group.name} (room)`,
           muted: group.action.on,
           volume: group.action.bri / 254,
-          throttle: 1000,
+          throttle: 500,
         });
 
         assignment.on("volumeChanged", (volume: number) => {
           assignment.volume = volume;
 
-          api.put(`/groups/${id}/action`, {
-            bri: Math.round(assignment.volume * 254),
-            // on: true,
-            transitiontime: 10,
-          });
+          api
+            .put(`/groups/${id}/action`, {
+              bri: Math.round(assignment.volume * 254),
+              // on: true,
+              transitiontime: 10,
+            })
+            .then(() => {
+              this.throttleSync();
+            });
         });
 
         assignment.on("mutePressed", () => {
           assignment.muted = !assignment.muted;
 
-          api.put(`/groups/${id}/action`, {
-            bri: Math.round(assignment.volume * 254),
-            on: assignment.muted,
-            transitiontime: 1,
-          });
+          api
+            .put(`/groups/${id}/action`, {
+              bri: Math.round(assignment.volume * 254),
+              on: assignment.muted,
+              transitiontime: 1,
+            })
+            .then(() => {
+              this.throttleSync();
+            });
         });
 
         assignment.on("assignPressed", () => {
@@ -178,6 +217,7 @@ export class HueSyncApi {
             })
             .then(() => {
               assignment.muted = true;
+              this.throttleSync();
             });
         });
 
