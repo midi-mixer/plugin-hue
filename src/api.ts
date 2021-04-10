@@ -110,7 +110,7 @@ export class HueSyncApi {
           name: `${light.name} (light)`,
           muted: light.state.on,
           volume: light.state.bri / 254,
-          throttle: 500,
+          throttle: 100,
         });
 
         assignment.on("volumeChanged", (volume: number) => {
@@ -168,7 +168,7 @@ export class HueSyncApi {
           name: `${group.name} (room)`,
           muted: group.action.on,
           volume: group.action.bri / 254,
-          throttle: 500,
+          throttle: 1000,
         });
 
         assignment.on("volumeChanged", (volume: number) => {
