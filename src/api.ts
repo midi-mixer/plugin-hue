@@ -87,6 +87,7 @@ export class HueSyncApi {
           name: `${light.name} (light)`,
           muted: light.state.on,
           volume: light.state.bri / 254,
+          throttle: 500,
         });
 
         assignment.on("volumeChanged", (volume: number) => {
