@@ -139,6 +139,15 @@ declare namespace Hue {
      * 1 – Scene created via PUT, lightstates will be empty.
      * 2 – Scene created via POST lightstates available.
      */
-    vresion: number;
+    version: number;
+  }
+
+  interface Lights {
+    [lightId: string]: Light;
+  }
+
+  interface Light {
+    name: string;
+    state: Action;
   }
 }
