@@ -1,16 +1,23 @@
 // public
-import axios, { AxiosInstance } from "axios";
 import { Assignment } from "midi-mixer-plugin";
 
 interface Assignments {
   groups: Record<string, AssignmentData>;
-  lights: Record<string, Assignment>;
+  lights: Record<string, AssignmentData>;
+}
+
+enum ControlTarget {
+  Brightness = "brightness",
+  Hue = "hue",
 }
 
 interface AssignmentData {
   assignment: Assignment;
-  scenes: string[];
+  scenes?: string[];
   currentScene?: number;
+  controlling: ControlTarget;
+  brightness?: number;
+  hue?: number;
 }
 
 export class HueSyncApi {
@@ -25,7 +32,7 @@ export class HueSyncApi {
 
   private readonly settings = $MM.getSettings();
 
-  private readonly api = new Promise<AxiosInstance>((resolve, reject) => {
+  private readonly baseUrl = new Promise<string>((resolve, reject) => {
     this.settings
       .then((settings) => {
         if (!settings?.hueip)
@@ -34,11 +41,7 @@ export class HueSyncApi {
         if (!settings?.hueuser)
           return reject(new Error("No Philips Hue user given to log in as."));
 
-        const instance = axios.create({
-          baseURL: `http://${settings.hueip}/api/${settings.hueuser}`,
-        });
-
-        resolve(instance);
+        resolve(`http://${settings.hueip}/api/${settings.hueuser}`);
       })
       .catch(reject);
   });
@@ -64,12 +67,10 @@ export class HueSyncApi {
 
   public throttleSync(): void {
     this.needResync = true;
-
     if (!this.changeSyncTimer) {
       this.changeSyncTimer = setInterval(async () => {
         this.needResync = false;
         await Promise.all([this.syncGroups(), this.syncLights()]);
-
         /**
          * Cancel the interval timer if needResync is still false. If another
          * control has requested a resync then the interval can continue.
@@ -101,13 +102,17 @@ export class HueSyncApi {
   private async _syncLights(): Promise<void> {
     console.log("Syncing lights");
 
-    const api = await this.api;
-    const lightsRes = await api.get<Hue.Lights>("/lights");
+    const baseUrl = await this.baseUrl;
 
-    Object.entries(lightsRes.data).forEach(([id, light]) => {
+    const lightsRes: Hue.Lights = await fetch(`${baseUrl}/lights`).then((res) =>
+      res.json()
+    );
+
+    Object.entries(lightsRes).forEach(([id, light]) => {
       if (!this.assignments.lights[id]) {
         const assignment = new Assignment(`light-${id}`, {
           name: `${light.name} (light)`,
+          assigned: false,
           muted: light.state.on,
           volume: light.state.bri / 254,
           throttle: 100,
@@ -116,38 +121,80 @@ export class HueSyncApi {
         assignment.on("volumeChanged", (volume: number) => {
           assignment.volume = volume;
 
-          api
-            .put(`/lights/${id}/state`, {
-              bri: Math.round(assignment.volume * 254),
-              // on: true,
-              transitiontime: 10,
-            })
-            .then(() => {
+          const change: any = {
+            transitiontime: 1,
+          };
+
+          if (this.assignments.lights[id].controlling === ControlTarget.Hue) {
+            change.hue = Math.round(assignment.volume * 65535);
+            change.sat = 254;
+          } else {
+            change.bri = Math.round(assignment.volume * 254);
+          }
+
+          fetch(`${baseUrl}/lights/${id}/state`, {
+            method: "PUT",
+            body: JSON.stringify(change),
+          }).then((res) => {
+            if (res.ok) {
               this.throttleSync();
-            });
+            }
+          });
+        });
+
+        assignment.on("runPressed", () => {
+          if (!this.assignments.lights[id]) return;
+
+          if (
+            this.assignments.lights[id].controlling === ControlTarget.Brightness
+          ) {
+            assignment.running = true;
+            this.assignments.lights[id].controlling = ControlTarget.Hue;
+            assignment.volume = (this.assignments.lights[id].hue ?? 0) / 65535;
+          } else {
+            assignment.running = false;
+            this.assignments.lights[id].controlling = ControlTarget.Brightness;
+            assignment.volume =
+              (this.assignments.lights[id].brightness ?? 0) / 254;
+          }
         });
 
         assignment.on("mutePressed", () => {
           assignment.muted = !assignment.muted;
 
-          api
-            .put(`/lights/${id}/state`, {
-              bri: Math.round(assignment.volume * 254),
+          fetch(`${baseUrl}/lights/${id}/state`, {
+            method: "PUT",
+            body: JSON.stringify({
+              bri: Math.round(this.assignments.lights[id].brightness ?? 254),
               on: assignment.muted,
               transitiontime: 1,
-              // effect: "colorloop",
-            })
-            .then(() => {
+            }),
+          }).then((res) => {
+            if (res.ok) {
               this.throttleSync();
-            });
+            }
+          });
         });
 
-        this.assignments.lights[id] = assignment;
+        this.assignments.lights[id] = {
+          assignment,
+          controlling: ControlTarget.Brightness,
+          brightness: light.state.bri,
+          hue: light.state.hue,
+        };
       } else {
-        const assignment = this.assignments.lights[id];
+        this.assignments.lights[id].brightness = light.state.bri;
+        this.assignments.lights[id].hue = light.state.hue;
+
+        const assignment = this.assignments.lights[id].assignment;
         assignment.name = `${light.name} (light)`;
         assignment.muted = light.state.on;
-        assignment.volume = light.state.bri / 254;
+        assignment.running =
+          this.assignments.lights[id].controlling === ControlTarget.Hue;
+        assignment.volume =
+          this.assignments.lights[id].controlling === ControlTarget.Hue
+            ? light.state.hue / 65535
+            : light.state.bri / 254;
       }
     });
   }
@@ -155,48 +202,80 @@ export class HueSyncApi {
   private async _syncGroups(): Promise<void> {
     console.log("Syncing groups");
 
-    const api = await this.api;
+    // const api = await this.api;
+    const baseUrl = await this.baseUrl;
 
-    const [groupsRes, scenesRes] = await Promise.all([
-      api.get<Hue.Groups>("/groups"),
-      api.get<Hue.Scenes>("/scenes"),
+    const [groupsRes, scenesRes]: [Hue.Groups, Hue.Scenes] = await Promise.all([
+      fetch(`${baseUrl}/groups`).then((res) => res.json()),
+      fetch(`${baseUrl}/scenes`).then((res) => res.json()),
     ]);
 
-    Object.entries(groupsRes.data).forEach(([id, group]) => {
+    Object.entries(groupsRes).forEach(([id, group]) => {
       if (!this.assignments.groups[id]) {
         const assignment = new Assignment(`group-${id}`, {
           name: `${group.name} (room)`,
           muted: group.action.on,
           volume: group.action.bri / 254,
           throttle: 1000,
+          assigned: true,
         });
 
         assignment.on("volumeChanged", (volume: number) => {
           assignment.volume = volume;
 
-          api
-            .put(`/groups/${id}/action`, {
-              bri: Math.round(assignment.volume * 254),
-              // on: true,
-              transitiontime: 10,
-            })
-            .then(() => {
+          const change: any = {
+            transitiontime: 10,
+          };
+
+          if (this.assignments.groups[id].controlling === ControlTarget.Hue) {
+            change.hue = Math.round(assignment.volume * 65535);
+            change.sat = 254;
+          } else {
+            change.bri = Math.round(assignment.volume * 254);
+          }
+
+          fetch(`${baseUrl}/groups/${id}/action`, {
+            method: "PUT",
+            body: JSON.stringify(change),
+          }).then((res) => {
+            if (res.ok) {
               this.throttleSync();
-            });
+            }
+          });
+        });
+
+        assignment.on("runPressed", () => {
+          if (!this.assignments.groups[id]) return;
+
+          if (
+            this.assignments.groups[id].controlling === ControlTarget.Brightness
+          ) {
+            assignment.running = true;
+            this.assignments.groups[id].controlling = ControlTarget.Hue;
+            assignment.volume = (this.assignments.groups[id].hue ?? 0) / 65535;
+          } else {
+            assignment.running = false;
+            this.assignments.groups[id].controlling = ControlTarget.Brightness;
+            assignment.volume =
+              (this.assignments.groups[id].brightness ?? 0) / 254;
+          }
         });
 
         assignment.on("mutePressed", () => {
           assignment.muted = !assignment.muted;
 
-          api
-            .put(`/groups/${id}/action`, {
-              bri: Math.round(assignment.volume * 254),
+          fetch(`${baseUrl}/groups/${id}/action`, {
+            method: "PUT",
+            body: JSON.stringify({
+              bri: Math.round(this.assignments.groups[id].brightness ?? 254),
               on: assignment.muted,
               transitiontime: 1,
-            })
-            .then(() => {
+            }),
+          }).then((res) => {
+            if (res.ok) {
               this.throttleSync();
-            });
+            }
+          });
         });
 
         assignment.on("assignPressed", () => {
@@ -204,37 +283,51 @@ export class HueSyncApi {
           if (!data) return;
 
           data.currentScene =
-            ((data.currentScene ?? -1) + 1) % data.scenes.length;
-          const sceneId = data.scenes[data.currentScene];
+            ((data.currentScene ?? -1) + 1) % (data.scenes?.length ?? 0);
+          const sceneId = data.scenes?.[data.currentScene];
           if (!sceneId) return;
 
-          api
-            .put(`/groups/${id}/action`, {
+          fetch(`${baseUrl}/groups/${id}/action`, {
+            method: "PUT",
+            body: JSON.stringify({
               on: true,
               scene: sceneId,
               transitiontime: 1,
               effect: sceneId === "colorloop" ? "colorloop" : "none",
-            })
-            .then(() => {
-              assignment.muted = true;
+            }),
+          }).then((res) => {
+            if (res.ok) {
               this.throttleSync();
-            });
+            }
+          });
         });
 
-        this.assignments.groups[id] = { assignment, scenes: ["colorloop"] };
+        this.assignments.groups[id] = {
+          assignment,
+          scenes: ["colorloop"],
+          controlling: ControlTarget.Brightness,
+        };
       } else {
+        this.assignments.groups[id].brightness = group.action.bri ?? 254;
+        this.assignments.groups[id].hue = group.action.hue ?? 0;
+
         const { assignment } = this.assignments.groups[id];
         assignment.name = `${group.name} (room)`;
         assignment.muted = group.action.on;
-        assignment.volume = group.action.bri / 254;
+        assignment.volume =
+          this.assignments.groups[id].controlling === ControlTarget.Hue
+            ? group.action.hue / 65535
+            : group.action.bri / 254;
+        assignment.running =
+          this.assignments.groups[id].controlling === ControlTarget.Hue;
         this.assignments.groups[id].scenes = ["colorloop"];
       }
     });
 
-    Object.entries(scenesRes.data).forEach(([id, scene]) => {
+    Object.entries(scenesRes).forEach(([id, scene]) => {
       const assignment = this.assignments.groups[scene.group];
       if (!assignment) return;
-      assignment.scenes.push(id);
+      assignment.scenes?.push(id);
     });
   }
 }
