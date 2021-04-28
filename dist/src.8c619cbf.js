@@ -11,4 +11,4 @@ parcelRequire=function(e,r,t,n){var i,o="function"==typeof parcelRequire&&parcel
 },{"midi-mixer-plugin":"pOiF"}],"QCba":[function(require,module,exports) {
 "use strict";var e=require("./api");new e.HueSyncApi;
 },{"./api":"in7L"}]},{},["QCba"], null)
-//# sourceMappingURL=dist/src.8c619cbf.js.map
+//# sourceMappingURL=src.8c619cbf.js.map
