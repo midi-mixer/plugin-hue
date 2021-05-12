@@ -1,28 +1,6 @@
 {
-  "name": "plugin-hue",
-  "prettyName": "Philips Hue",
-  "version": "0.1.0",
+  "name": "com.midi-mixer.hue",
   "description": "Philips Hue plugin for MIDI Mixer.",
-  "main": "dist/index.html",
-  "icon": "icon.png",
-  "settings": {
-    "hueip": {
-      "label": "Hue Bridge IP / Address",
-      "required": true,
-      "type": "text"
-    },
-    "hueuser": {
-      "label": "Hue Bridge User",
-      "required": true,
-      "type": "password"
-    },
-    "synctime": {
-      "label": "Sync interval (seconds)",
-      "required": false,
-      "type": "text",
-      "fallback": "30"
-    }
-  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "clean": "rimraf dist",
@@ -45,7 +23,7 @@
     "typescript": "^4.2.4"
   },
   "dependencies": {
-    "midi-mixer-plugin": "^0.1.7"
+    "midi-mixer-plugin": "^0.2.1"
   },
   "volta": {
     "node": "14.15.4",
