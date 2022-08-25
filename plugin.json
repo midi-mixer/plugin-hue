@@ -1,8 +1,9 @@
 {
   "$schema": "./node_modules/midi-mixer-plugin/plugin.schema.json",
-  "version": "1.0.0",
   "id": "com.midi-mixer.hue",
   "name": "Philips Hue",
+  "version": "1.0.1",
+  "author": "Jack Williams",
   "main": "dist/index.html",
   "icon": "icon.png",
   "settings": {
@@ -22,6 +23,5 @@
       "type": "text",
       "fallback": "30"
     }
-  },
-  "author": "Jack Williams"
+  }
 }
