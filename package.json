@@ -6,8 +6,15 @@
     "clean": "rimraf dist",
     "prestart": "npm run clean",
     "start": "parcel src/index.html --hmr-hostname localhost --public-url ./ -t browser",
-    "build": "tsc && npm run clean && parcel build src/index.html --public-url ./ -t browser"
+    "build": "tsc && npm run clean && parcel build src/index.html --public-url ./ -t browser",
+    "pack": "midi-mixer pack"
   },
+  "files": [
+    "icon.png",
+    "dist",
+    "PAGE.md",
+    "plugin.json"
+  ],
   "author": "Jack Williams",
   "license": "ISC",
   "devDependencies": {
@@ -17,16 +24,18 @@
     "eslint-config-prettier": "^8.1.0",
     "eslint-plugin-import": "^2.22.1",
     "eslint-plugin-prettier": "^3.3.1",
+    "midi-mixer-cli": "^1.0.5",
     "parcel-bundler": "^1.12.4",
     "prettier": "^2.2.1",
     "rimraf": "^3.0.2",
     "typescript": "^4.2.4"
   },
   "dependencies": {
-    "midi-mixer-plugin": "^0.2.1"
+    "midi-mixer-plugin": "^1.0.2"
   },
   "volta": {
     "node": "14.15.4",
     "npm": "6.14.11"
-  }
+  },
+  "version": "1.0.1"
 }
